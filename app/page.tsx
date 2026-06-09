@@ -1,4 +1,8 @@
 import Image from 'next/image';
+import { theme } from "@/app/components/components/Styles";
+import Link from "next/link";
+// FIX: Imported Show, removed the non-existent SignedIn and SignedOut exports
+import { SignInButton, SignUpButton, UserButton, Show } from '@clerk/nextjs'
 
 export default function Home() {
   return (
@@ -34,15 +38,37 @@ export default function Home() {
               
               {/* Action Buttons */}
               <div className="pt-8 flex flex-wrap gap-4 items-center">
-                <button className="px-8 py-3 bg-[#36ADA3] text-white font-semibold rounded-full text-base shadow-md shadow-teal-100 hover:bg-teal-600 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 cursor-pointer">
-                  Explore More
-                </button>
-                <button className="px-8 py-3 border-2 border-slate-200 bg-white text-slate-700 font-semibold rounded-full text-base hover:bg-slate-50 hover:border-slate-300 transition-all duration-300 transform hover:-translate-y-0.5 cursor-pointer">
-                  Share Resources
-                </button>
+                
+                {/* FIX: Replaced <SignedOut> with <Show when="signed-out"> */}
+                <Show when="signed-out">
+                  <SignInButton mode="modal">
+                    <button className="px-8 py-3 bg-[#36ADA3] text-white font-semibold rounded-full text-base shadow-md shadow-teal-100 hover:bg-teal-600 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 cursor-pointer">
+                      Sign In
+                    </button>
+                  </SignInButton>
+                  
+                  <SignUpButton mode="modal">
+                    <button className="px-8 py-3 border-2 border-slate-200 bg-white text-slate-700 font-semibold rounded-full text-base hover:bg-slate-50 hover:border-slate-300 transition-all duration-300 transform hover:-translate-y-0.5 cursor-pointer">
+                      Register Account
+                    </button>
+                  </SignUpButton>
+                </Show>
+
+                {/* FIX: Replaced <SignedIn> with <Show when="signed-in"> */}
+                <Show when="signed-in">
+                  <Link href="/features" className="px-8 py-3 bg-[#36ADA3] text-white font-semibold rounded-full text-base shadow-md shadow-teal-100 hover:bg-teal-600 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 cursor-pointer text-center">
+                    Explore Features
+                  </Link>
+                  
+                  <div className="flex items-center gap-3 bg-white border border-slate-200 py-2 px-4 rounded-full shadow-sm">
+                    <span className="text-sm font-medium text-slate-600">Account:</span>
+                    <UserButton />
+                  </div>
+                </Show>
+
               </div>
             </div>
-                       
+                        
             {/* Right Column: Description & Image Grid */}
             <div className="flex flex-col justify-center w-full">
               
