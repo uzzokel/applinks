@@ -30,7 +30,7 @@ export default function RootLayout({
           <Navbar />
           
           <main className="flex-grow flex-1">
-            {children} {/* <-- This slot automatically handles your page.tsx */}
+           {children} {/* <-- This slot automatically handles your page.tsx */}
           </main>
           
           <Footer />
@@ -39,28 +39,3 @@ export default function RootLayout({
     </ClerkProvider>
   );
 }
-// export default function RootLayout({
-//   children,
-// }: Readonly<{
-//   children: React.ReactNode;
-// }>) {
-//   return (
-//     <ClerkProvider>
-//       <html
-//         lang="en"
-//         className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-//       >
-//         <body className="min-h-screen flex flex-col bg-slate-50">
-//           <Navbar />
-          
-//           {/* This slot dynamically renders your page.tsx file content exactly once */}
-//           <main className="flex-grow flex-1">
-//             {children}
-//           </main>
-          
-//           <Footer />
-//         </body>
-//       </html>
-//     </ClerkProvider>
-//   );
-// }

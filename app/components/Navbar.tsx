@@ -15,8 +15,8 @@ const menuItems = [
   { label: "About", path: "/about" },
   { label: "Services", path: "/services" },
   { label: "Projects", path: "/projects" },
-  { label: "Testimonials", path: "/testimonials" },
-  { label: "Blog", path: "/blog" }
+  { label: "Blog", path: "/blog" },
+  { label: "Dashboard", path: "/dashboard" }
 ];
 
 const socialMedia = [

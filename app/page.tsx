@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { theme } from "@/app/components/components/Styles";
 import Link from "next/link";
+
 // FIX: Imported Show, removed the non-existent SignedIn and SignedOut exports
 import { SignInButton, SignUpButton, UserButton, Show } from '@clerk/nextjs'
 
@@ -8,8 +9,8 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 selection:bg-[#36ADA3]/30">
       
-      {/* Hero Section Container */}
-      <section className="relative min-h-screen flex items-center justify-center pt-20 md:pt-24 overflow-hidden isolate">
+      {/* Hero Section Container - Added bottom padding (pb-20 md:pb-28) to protect layout against footers */}
+      <section className="relative min-h-screen flex items-center justify-center pt-24 pb-20 md:pt-28 md:pb-28 overflow-hidden isolate">
         
         {/* Background decorative element for subtle texture */}
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(45rem_50rem_at_top,theme(colors.teal.50),white)] opacity-70" />
@@ -77,8 +78,8 @@ export default function Home() {
                 It highlights both agricultural abundance and human connection.
               </p>
 
-              {/* 2x2 Clean Image Grid */}
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full aspect-square sm:aspect-[4/3] lg:aspect-square max-w-lg mx-auto">
+              {/* 2x2 Clean Image Grid - Safe sizing so it lifts up cleanly away from items below it */}
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full aspect-square max-w-md lg:max-w-lg mx-auto">
                 <div className="relative w-full h-full overflow-hidden rounded-2xl shadow-md hover:shadow-xl transition-shadow duration-300">
                   <Image
                     src="/pics/download.jpeg"
