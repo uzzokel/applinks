@@ -2,7 +2,7 @@
 "use server"; 
 
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/db"; 
+import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
 export async function createProductAction(formData: FormData) {
@@ -30,13 +30,19 @@ export async function createProductAction(formData: FormData) {
       },
     });
 
+    // ⚡ FIX: Convert the Prisma Decimal object to a plain standard JS Number 
+    // so it can pass across the network boundary to Client Components without error.
+    const plainProduct = {
+      ...newProduct,
+      price: Number(newProduct.price),
+    };
+
     revalidatePath("/features"); 
-    return { success: true, product: newProduct };
+    
+    // Updated key to 'data' to explicitly match what your handleCreateItem expects
+    return { success: true, data: plainProduct };
   } catch (error) {
     console.error("Neon DB Error:", error);
     return { success: false, error: "Database save failed." };
   }
 }
-
-
-
