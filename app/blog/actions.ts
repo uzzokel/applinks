@@ -3,7 +3,7 @@
 import { prisma as db } from "@/lib/db";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
-import { Category } from "@prisma/client"; // Clean enum type enforcement
+import { Category } from "../generated/prisma";
 
 // 1. Fetch posts from Neon with full metadata mapping
 export async function getPosts() {

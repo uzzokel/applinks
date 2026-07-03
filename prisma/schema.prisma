@@ -28,11 +28,11 @@ model Product {
   quantity    Int      @default(0)
   lowStockAt  Int
   imageUrl    String?
-  description String?  // 👈 Add this line
+  description String?  
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
+  
   @@index([userId, productName])
   @@index([createdAt])
 }
@@ -74,4 +74,3 @@ model Like {
   
   @@unique([postId, userId]) // Prevents duplicate likes from a single user
 }
-
