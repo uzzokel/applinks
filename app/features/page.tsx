@@ -1,24 +1,88 @@
 "use client";
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useEffect } from 'react';
 import { createProductAction } from "@/app/actions/products"; 
 import { SignInButton, UserButton, useAuth } from "@clerk/nextjs";
-import Image from 'next/image';
-import { uploadFileAction } from './actions/upload';
+
+// --- 1. INDEXEDDB SETUP FOR HEAVY IMAGES ---
+const DB_NAME = "AgriHubStorage";
+const DB_VERSION = 1;
+const STORE_NAME = "productImages";
+
+function initDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = (event: Event) => resolve((event.target as IDBOpenDBRequest).result);
+    request.onerror = (event: Event) => reject((event.target as IDBOpenDBRequest).error);
+  });
+}
+
+function saveImageToIndexedDB(id: string, file: File): Promise<void> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const db = await initDB();
+      const transaction = db.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.put({ id, fileData: file });
+      request.onsuccess = () => resolve();
+      request.onerror = (event: Event) => reject((event.target as IDBRequest).error);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function getImageFromIndexedDB(id: string): Promise<Blob | null> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const db = await initDB();
+      const transaction = db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(id);
+      request.onsuccess = (event: Event) => {
+        const result = (event.target as IDBRequest).result;
+        resolve(result ? result.fileData : null);
+      };
+      request.onerror = (event: Event) => reject((event.target as IDBRequest).error);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function deleteImageFromIndexedDB(id: string): Promise<void> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const db = await initDB();
+      const transaction = db.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = (event: Event) => reject((event.target as IDBRequest).error);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+interface Item {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  imageUrl: string;
+}
 
 export default function FeaturesPage() {
   const [isPending, startTransition] = useTransition();
   const { isLoaded, isSignedIn } = useAuth();
-
-  const [items, setItems] = useState([
-    {
-      id: "1",
-      name: "Premium Cassava Starch",
-      description: "High-grade industrial starch optimized for processing pipelines.",
-      price: 45.00,
-      imageUrl: ""
-    }
-  ]);
+  const [items, setItems] = useState<Item[]>([]);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -34,9 +98,49 @@ export default function FeaturesPage() {
     price: '',
   });
 
-  const clientAction = async (formData: FormData) => {
+  // --- 2. DUAL-PERSISTENCE MOUNT HYDRATION (TEXT + IMAGES) ---
+  useEffect(() => {
+    async function hydration() {
+      const savedItems = localStorage.getItem("local_hub_items");
+      const parsedItems: Item[] = savedItems ? JSON.parse(savedItems) : [
+        {
+          id: "1",
+          name: "Premium Cassava Starch",
+          description: "High-grade industrial starch optimized for processing pipelines.",
+          price: 45.00,
+          imageUrl: ""
+        }
+      ];
+
+      const updatedItems = await Promise.all(
+        parsedItems.map(async (item) => {
+          if (item.id !== "1" && !item.imageUrl) { 
+            try {
+              const fileData = await getImageFromIndexedDB(item.id);
+              if (fileData) {
+                return { ...item, imageUrl: URL.createObjectURL(fileData) };
+              }
+            } catch (e) {
+              console.error("Failed to restore image from IndexedDB", e);
+            }
+          }
+          return item;
+        })
+      );
+      setItems(updatedItems);
+    }
+    hydration();
+  }, []);
+
+  // --- RIGHT FORM ACTION: DIRECT TO CLOUD NEON POSTGRES (TEXT ONLY) ---
+  const clientAction = async (formDataPayload: FormData) => {
+    if (!isSignedIn) {
+      alert("❌ Unauthorized: You must be logged in to modify database entries.");
+      return;
+    }
+
     startTransition(async () => {
-      const result = await createProductAction(formData);
+      const result = await createProductAction(formDataPayload);
       if (result.success) {
         alert("🎉 Product successfully saved to Neon!");
       } else {
@@ -51,35 +155,99 @@ export default function FeaturesPage() {
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFormData((prev) => ({ ...prev, image: e.target.files![0] }));
+    const file = e.target.files?.[0];
+    if (file) {
+      setFormData((prev) => ({ ...prev, image: file }));
     }
   };
 
-  const handleCreateItem = (e: React.FormEvent) => {
+  // --- LEFT FORM SUBMIT ROUTED DIRECTLY TO NEON VIA SERVER ACTION ---
+  const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.price) return alert('Please enter at least a name and price.');
+    
+    if (!isSignedIn) {
+      alert("❌ Operation Denied: Action requires active session authentication.");
+      return;
+    }
 
-    const imageUrl = formData.image ? URL.createObjectURL(formData.image) : '';
+    if (!formData.name || !formData.price) {
+      alert('Please enter at least a name and price.');
+      return;
+    }
 
-    const newItem = {
-      id: Date.now().toString(),
-      name: formData.name,
-      description: formData.description,
-      price: parseFloat(formData.price),
-      imageUrl,
-    };
+    startTransition(async () => {
+      const dataPayload = new FormData();
+      dataPayload.append("productName", formData.name);
+      dataPayload.append("price", formData.price);
+      dataPayload.append("description", formData.description || "");
+      dataPayload.append("quantity", "10"); 
+      dataPayload.append("lowStockAt", "2");
+      dataPayload.append("imageUrl", ""); 
 
-    setItems((prev) => [newItem, ...prev]);
-    setFormData({ name: '', description: '', price: '', image: null });
+      const result = await createProductAction(dataPayload);
+
+      if (result.success) {
+        alert("🎉 Product successfully saved to Neon via Local Creation Pane!");
+        
+        let localImageUrl = "";
+        const targetId = result.data?.id || Date.now().toString();
+
+        if (formData.image) {
+          try {
+            await saveImageToIndexedDB(targetId, formData.image);
+            localImageUrl = URL.createObjectURL(formData.image);
+          } catch (error) {
+            console.error("IndexedDB write failure:", error);
+          }
+        }
+
+        if (result.data) {
+          const syncedItem: Item = {
+            id: targetId,
+            name: result.data.productName, 
+            description: formData.description || "",
+            price: result.data.price || 0,
+            imageUrl: localImageUrl || result.data.imageUrl || ""
+          };
+
+          const newItemsList = [syncedItem, ...items];
+          setItems(newItemsList);
+
+          const cleanListForStorage = newItemsList.map(({ imageUrl, ...rest }) => rest);
+          localStorage.setItem("local_hub_items", JSON.stringify(cleanListForStorage));
+        }
+        
+        setFormData({ name: '', description: '', price: '', image: null });
+      } else {
+        alert(`❌ Error saving via Local Pane: ${result.error}`);
+      }
+    });
   };
 
-  const handleDelete = (id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+  const handleDelete = async (id: string) => {
+    if (!isSignedIn) {
+      alert("❌ Operation Denied: Action requires active session authentication.");
+      return;
+    }
+
+    const filtered = items.filter((item) => item.id !== id);
+    setItems(filtered);
+    
+    const cleanListForStorage = filtered.map(({ imageUrl, ...rest }) => rest);
+    localStorage.setItem("local_hub_items", JSON.stringify(cleanListForStorage));
+
+    if (id !== "1") {
+      try {
+        await deleteImageFromIndexedDB(id);
+      } catch (e) {
+        console.error("Failed to delete local binary asset image:", e);
+      }
+    }
+
     if (editingId === id) setEditingId(null);
   };
 
-  const startEditing = (item: any) => {
+  const startEditing = (item: Item) => {
     setEditingId(item.id);
     setEditFormData({
       name: item.name,
@@ -89,18 +257,27 @@ export default function FeaturesPage() {
   };
 
   const handleUpdateItem = (id: string) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              name: editFormData.name,
-              description: editFormData.description,
-              price: parseFloat(editFormData.price) || 0,
-            }
-          : item
-      )
+    if (!isSignedIn) {
+      alert("❌ Operation Denied: Action requires active session authentication.");
+      return;
+    }
+
+    const updated = items.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            name: editFormData.name,
+            description: editFormData.description,
+            price: parseFloat(editFormData.price) || 0,
+          }
+        : item
     );
+
+    setItems(updated);
+
+    const cleanListForStorage = updated.map(({ imageUrl, ...rest }) => rest);
+    localStorage.setItem("local_hub_items", JSON.stringify(cleanListForStorage));
+
     setEditingId(null);
   };
 
@@ -142,7 +319,7 @@ export default function FeaturesPage() {
         <div className="flex flex-col-reverse lg:flex-row min-h-screen bg-slate-50/50">
           
           {/* MAIN DASHBOARD CONTENT AREA */}
-          <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto">
+          <main className="flex-1 pt-[96px] sm:pt-[104px] lg:pt-[120px] p-4 sm:p-6 lg:p-10 overflow-y-auto">
             <div className="max-w-5xl mx-auto">
               <header className="mb-6 lg:mb-8">
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-[#121358] tracking-tight">
@@ -200,21 +377,37 @@ export default function FeaturesPage() {
                         required
                       />
                     </div>
+                    
+                    {/* Controlled Custom Managed Media Picker Element Row */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-500 mb-1">Product Media</label>
-                      <input
-                        type="file"
-                        key={formData.image ? formData.image.name : 'empty-file-input'}
-                        accept="image/*"
-                        onChange={handleImageChange}
-                        className="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[#36ADA3]/10 file:text-[#36ADA3] hover:file:bg-[#36ADA3]/20 cursor-pointer"
-                      />
+                      <div className="flex items-center gap-2.5 mt-1 bg-slate-50 p-2 border border-slate-200 rounded-lg">
+                        <input
+                          type="file"
+                          id="local-pane-file-input"
+                          key={formData.image ? formData.image.name : 'empty-file-input'}
+                          accept="image/*"
+                          onChange={handleImageChange}
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor="local-pane-file-input"
+                          className="py-1 px-2.5 rounded-md text-xs font-semibold bg-[#36ADA3]/10 text-[#36ADA3] hover:bg-[#36ADA3]/20 cursor-pointer transition shrink-0"
+                        >
+                          Choose File
+                        </label>
+                        <span className="text-xs text-slate-500 truncate max-w-[150px]">
+                          {formData.image ? formData.image.name : "No file chosen"}
+                        </span>
+                      </div>
                     </div>
+
                     <button
                       type="submit"
-                      className="w-full py-2.5 px-4 rounded-lg bg-[#36ADA3] hover:bg-[#2c968c] text-white font-medium text-sm transition shadow-sm mt-2"
+                      disabled={isPending}
+                      className="w-full py-2.5 px-4 rounded-lg bg-[#36ADA3] hover:bg-[#2c968c] text-white font-medium text-sm transition shadow-sm mt-2 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
                     >
-                      Add to Hub View
+                      {isPending ? "Adding to Neon..." : "Add to Hub View"}
                     </button>
                   </form>
                 </div>
@@ -345,8 +538,8 @@ export default function FeaturesPage() {
             </div>
           </main>
 
-          {/* SIDEBAR PANE LAYER - ADJUSTED RESPONSIBILITY GRID */}
-          <aside className="w-full lg:w-[380px] bg-white border-b lg:border-b-0 lg:border-l border-slate-200/80 p-5 sm:p-6 lg:p-8 shadow-md lg:shadow-2xl flex flex-col justify-between lg:min-h-screen shrink-0">
+          {/* SIDEBAR PANE LAYER */}
+          <aside className="w-full lg:w-[380px] mt-[96px] sm:mt-[108px] lg:mt-[84px] lg:h-[calc(100vh-84px)] bg-white border-b lg:border-b-0 lg:border-l border-slate-200/80 p-5 sm:p-6 lg:p-8 shadow-md lg:shadow-2xl flex flex-col justify-between shrink-0 overflow-y-auto">
             <div>
               <div className="mb-5 pb-4 border-b border-slate-100">
                 <h2 className="text-lg sm:text-xl font-bold text-[#121358] tracking-tight flex items-center gap-2">
@@ -425,15 +618,14 @@ export default function FeaturesPage() {
               </form>
             </div>
 
-            {/* Branded Footer Container */}
             <div className="pt-4 mt-6 border-t border-slate-100 flex items-center justify-between">
               <span className="text-[10px] text-slate-400 tracking-wider uppercase font-medium">
                 Channel Active
               </span>
-              <UserButton fallbackRedirectUrl="/features" />
+              <UserButton/>
             </div>
           </aside>
-          
+            
         </div>
       )}
     </>

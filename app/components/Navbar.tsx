@@ -26,17 +26,35 @@ const socialMedia = [
   { label: "Instagram", url: "https://instagram.com/yourprofile", icon: FaInstagram }
 ];
 
-export default function Navbar() {
-  const [activeMenuItem, selectActiveItem] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+              export default function Navbar() {
+                const [activeMenuItem, selectActiveItem] = useState<string | null>(null);
+                const [menuOpen, setMenuOpen] = useState(false);
+              // NEW STATE: Tracks if the user has scrolled down past 20 pixels
+                const [isScrolled, setIsScrolled] = useState(false);
 
-  const handleClick = () => {
-    selectActiveItem(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+                // NEW EFFECT: Listens to the browser scroll event
+                useEffect(() => {
+                  const handleScroll = () => {
+                    if (window.scrollY > 20) {
+                      setIsScrolled(true);  // User scrolled down
+                    } else {
+                      setIsScrolled(false); // User is at the very top
+                    }
+                  };
+
+                  window.addEventListener("scroll", handleScroll);
+                  return () => window.removeEventListener("scroll", handleScroll);
+                }, []);
+                
+                const handleClick = () => {
+                  selectActiveItem(null);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                };
+
 
   return (
-    <nav className="left-0 w-full z-50 bg-white transition-all duration-500 border shadow-md top-0 p-2 rounded-xl border-gray-100 shadow-sm">
+    <nav className={`left-0 w-full z-50 fixed top-0 p-2 border transition-all duration-500 rounded-xl ${isScrolled ? "bg-white shadow-md border-gray-100"
+        : "bg-transparent border-transparent shadow-none"}`}>
       <div className="flex justify-between items-center px-[8%] lg:px-[5%] py-4">
         
         {/* Logo Section */}
@@ -58,22 +76,25 @@ export default function Navbar() {
         </div>
 
         {/* Desktop Menu */}
-        <ul className="hidden lg:flex text-lg items-center gap-5 cursor-pointer text-gray-500 font-medium Sync">
-          {menuItems.map((item, i) => (
-            <li key={i}>
-              <Link 
-                href={item.path} 
-                onClick={() => selectActiveItem(item.label)} 
-                className={`relative nav-menu transition-all duration-300 cursor-pointer ${
-                  activeMenuItem === item.label ? "active-nav text-cyan-400" : "text-gray-500 hover:text-[#36ADA3]"
-                }`}
-              >
-                {item.label}
-              </Link>   
-            </li>
-          ))}
-        </ul>
-
+<ul className="hidden lg:flex text-lg items-center gap-5 cursor-pointer font-medium Sync">
+  {menuItems.map((item, i) => (
+    <li key={i}>
+      <Link 
+        href={item.path} 
+        onClick={() => selectActiveItem(item.label)} 
+        className={`relative nav-menu transition-all duration-300 cursor-pointer ${
+          activeMenuItem === item.label 
+            ? "active-nav text-cyan-400" // Active item stays cyan
+            : isScrolled
+              ? "text-gray-800 hover:text-[#36ADA3]" // Scrolled down: Darker gray, teal hover
+              : "text-gray-500 hover:text-cyan-500"  // At the top: Medium gray, cyan hover
+        }`}
+      >
+        {item.label}
+      </Link>   
+    </li>
+  ))}
+</ul>
         {/* Right Action side: Socials & Auth */}
         <div className="flex items-center gap-4 z-50">
           <ul className="hidden lg:flex items-center gap-5">

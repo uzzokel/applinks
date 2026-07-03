@@ -1,11 +1,19 @@
-// 1. FIXED TYPO: Changed 'clkMiddleware' to 'clerkMiddleware'
+// proxy.ts
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
-// Define which routes must require authentication
+// 1. Define your protected dashboard/forum routes
 const isProtectedRoute = createRouteMatcher(['/dashboard(.*)', '/forum(.*)']);
 
-// 2. FIXED TYPO: Using the correct function name here as well
+// 2. Define your public routes so Clerk doesn't intercept or obscure them
+const isPublicRoute = createRouteMatcher(['/api/neon-data(.*)']);
+
 export default clerkMiddleware(async (auth, req) => {
+  // If it matches our Neon API path, let it pass right through without check
+  if (isPublicRoute(req)) {
+    return;
+  }
+
+  // Otherwise, enforce protection on dashboard/forum
   if (isProtectedRoute(req)) {
     await auth.protect();
   }
@@ -13,12 +21,9 @@ export default clerkMiddleware(async (auth, req) => {
 
 export const config = {
   matcher: [
-    // 3. SAFE MATCHER: Standard Next.js paths without the broken regex assets engine
+    // Safe matcher: Exclude next internals, static files, and images
     '/((?!_next/static|_next/image|favicon.ico).*)',
-    // Always run for API routes
+    // Always execute the proxy file for API and TRPC paths
     '/(api|trpc)(.*)',
   ],
 };
-
-
-
