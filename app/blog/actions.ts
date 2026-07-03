@@ -5,6 +5,9 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { Category } from "../generated/prisma";
 
+// Import types from Prisma to fix the implicit "any" errors cleanly
+import { Post, Comment, Like } from "../generated/prisma";
+
 // 1. Fetch posts from Neon with full metadata mapping
 export async function getPosts() {
   const { userId } = await auth();
@@ -24,7 +27,8 @@ export async function getPosts() {
     year: "numeric" 
   };
 
-  return posts.map(post => ({
+  // Added explicit Prisma types to post, like, and c parameters below
+  return posts.map((post: Post & { comments: Comment[]; likes: Like[] }) => ({
     id: post.id,
     authorName: post.authorName,
     authorImage: post.authorImage,
@@ -33,9 +37,9 @@ export async function getPosts() {
     category: post.category,
     tags: post.tags,
     likes: post.likes.length,
-    likedByMe: userId ? post.likes.some(like => like.userId === userId) : false,
+    likedByMe: userId ? post.likes.some((like: Like) => like.userId === userId) : false,
     createdAt: post.createdAt.toLocaleDateString("en-US", dateFormatOptions),
-    comments: post.comments.map(c => ({
+    comments: post.comments.map((c: Comment) => ({
       id: c.id,
       authorName: c.authorName,
       authorImage: c.authorImage,
